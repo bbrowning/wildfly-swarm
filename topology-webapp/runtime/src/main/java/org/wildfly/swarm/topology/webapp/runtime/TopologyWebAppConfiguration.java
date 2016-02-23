@@ -16,8 +16,12 @@
 package org.wildfly.swarm.topology.webapp.runtime;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
+import org.jboss.dmr.ModelNode;
+import org.jboss.msc.service.ServiceActivator;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.asset.ClassLoaderAsset;
@@ -41,35 +45,51 @@ public class TopologyWebAppConfiguration extends AbstractServerConfiguration<Top
     }
 
     @Override
+    public List<ServiceActivator> getServiceActivators(TopologyWebAppFraction fraction) {
+        List<ServiceActivator> activators = new ArrayList<>();
+        activators.add(new TopologyWebAppActivator(fraction.proxiedServiceMappings().keySet()));
+        return activators;
+    }
+
+    @Override
     public List<Archive> getImplicitDeployments(TopologyWebAppFraction fraction) throws Exception {
         String context = System.getProperty(TopologyProperties.CONTEXT_PATH);
         if (context == null) context = DEFAULT_CONTEXT;
 
         List<Archive> list = new ArrayList<>();
-        WARArchive war = ShrinkWrap.create(WARArchive.class, "topology-webapp.war");
-        war.addAsWebInfResource(new StringAsset(getWebXml(fraction)), "web.xml");
-        war.addClass(TopologySSEServlet.class);
-        war.addModule("swarm.application");
-        war.addModule("org.wildfly.swarm.topology");
-        war.addAsWebResource(new ClassLoaderAsset("topology.js", this.getClass().getClassLoader()), "topology.js");
-        war.setContextRoot(context);
-        war.as(TopologyArchive.class);
-        list.add(war);
+        if (fraction.exposeTopologyEndpoint()) {
+            WARArchive war = ShrinkWrap.create(WARArchive.class, "topology-webapp.war");
+            war.addAsWebInfResource(new StringAsset(getWebXml(fraction)), "web.xml");
+            war.addClass(TopologySSEServlet.class);
+            war.addModule("swarm.application");
+            war.addModule("org.wildfly.swarm.topology");
+            war.addAsWebResource(new ClassLoaderAsset("topology.js", this.getClass().getClassLoader()), "topology.js");
+            war.setContextRoot(context);
+            war.as(TopologyArchive.class);
+            list.add(war);
+        }
         return list;
     }
 
     protected String getWebXml(TopologyWebAppFraction fraction) {
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+        String webXml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
                 "<web-app xmlns=\"http://java.sun.com/xml/ns/javaee\"" +
                 "    xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"" +
                 "    xsi:schemaLocation=\"http://java.sun.com/xml/ns/javaee" +
                 "                        http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd\"" +
-                "    version=\"3.0\">" +
-                "    <context-param>" +
-                "        <param-name>externalAddressMapper</param-name>" +
-                "        <param-value>" + fraction.externalAddressMapper().getName() + "</param-value>" +
-                "    </context-param>" +
-                "</web-app>";
+                "    version=\"3.0\">";
+
+        Map<String, String> proxiedServiceMappings = fraction.proxiedServiceMappings();
+        for (String serviceName : proxiedServiceMappings.keySet()) {
+            String contextPath = proxiedServiceMappings.get(serviceName);
+            webXml +=
+                    "    <context-param>" +
+                    "        <param-name>" + serviceName + "-proxy</param-name>" +
+                    "        <param-value>" + contextPath + "</param-value>" +
+                    "    </context-param>";
+        }
+        webXml += "</web-app>";
+        return webXml;
     }
 
 }

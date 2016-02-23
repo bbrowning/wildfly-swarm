@@ -3,7 +3,9 @@
     <artifact name="org.wildfly.swarm:topology-webapp:${project.version}"/>
   </resources>
   <dependencies>
+    <module name="org.wildfly.swarm.configuration"/>
     <module name="org.wildfly.swarm.container"/>
     <module name="org.wildfly.swarm.topology"/>
+    <module name="org.wildfly.swarm.undertow"/>
   </dependencies>
 </module>

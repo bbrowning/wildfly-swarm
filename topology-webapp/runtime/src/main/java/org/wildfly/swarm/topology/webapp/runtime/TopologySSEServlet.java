@@ -17,6 +17,7 @@ package org.wildfly.swarm.topology.webapp.runtime;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +38,6 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.wildfly.swarm.topology.ExternalAddressMapper;
 import org.wildfly.swarm.topology.Topology;
 import org.wildfly.swarm.topology.TopologyListener;
 
@@ -49,8 +49,6 @@ import org.wildfly.swarm.topology.TopologyListener;
 public class TopologySSEServlet extends HttpServlet {
 
     private Topology topology;
-
-    private ExternalAddressMapper externalAddressMapper;
 
     private ScheduledExecutorService keepAliveExecutor;
 
@@ -64,13 +62,6 @@ public class TopologySSEServlet extends HttpServlet {
         } catch (NamingException e) {
             e.printStackTrace();
             throw new ServletException();
-        }
-        try {
-            Class clazz = Class.forName(config.getServletContext().getInitParameter("externalAddressMapper"));
-            this.externalAddressMapper = (ExternalAddressMapper) clazz.newInstance();
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new ServletException(e);
         }
 
         this.keepAliveExecutor = Executors.newScheduledThreadPool(2);
@@ -88,7 +79,7 @@ public class TopologySSEServlet extends HttpServlet {
         Object writeLock = new Object();
 
         TopologyListener topologyListener = topo -> {
-            String json = topologyToJson(req.getServerPort());
+            String json = topologyToJson(req);
             synchronized (writeLock) {
                 writer.write("event: topologyChange\n");
                 writer.write("data: " + json);
@@ -137,14 +128,14 @@ public class TopologySSEServlet extends HttpServlet {
 
 
         this.topology.addListener(topologyListener);
-        String json = topologyToJson(req.getServerPort());
+        String json = topologyToJson(req);
         writer.write("event: topologyChange\n");
         writer.write("data: " + json);
         writer.flush();
 
     }
 
-    protected String topologyToJson(int externalPort) {
+    protected String topologyToJson(HttpServletRequest req) {
         StringBuilder json = new StringBuilder();
 
         json.append("{");
@@ -157,28 +148,20 @@ public class TopologySSEServlet extends HttpServlet {
         while (keyIter.hasNext()) {
             String key = keyIter.next();
             json.append("  ").append('"').append(key).append('"').append(": [");
-            List<Topology.Entry> list = map.get(key);
-            Iterator<Topology.Entry> listIter = list.iterator();
-            while (listIter.hasNext()) {
-                Topology.Entry server = listIter.next();
-                server = this.externalAddressMapper.toExternal(server, externalPort);
-                json.append("{");
-                json.append("\"endpoint\": \"").append(server.getAddress() + ":" + server.getPort()).append("\",");
-                json.append("\"tags\":[");
-
-                List<String> tags = server.getTags();
-                Iterator<String> tagIter = tags.iterator();
-                while ( tagIter.hasNext() ) {
-                    String tag = tagIter.next();
-                    json.append("\"").append(tag).append("\"");
-                    if ( tagIter.hasNext() ) {
+            String proxyContext = getServletContext().getInitParameter(key + "-proxy");
+            if (proxyContext != null) {
+                populateEndpointAndTagsJson(json, proxyContext,
+                        Collections.singletonList(req.isSecure() ? "https" : "http"));
+            } else {
+                List<Topology.Entry> list = map.get(key);
+                Iterator<Topology.Entry> listIter = list.iterator();
+                while (listIter.hasNext()) {
+                    Topology.Entry server = listIter.next();
+                    String endpoint = server.getAddress() + ":" + server.getPort();
+                    populateEndpointAndTagsJson(json, endpoint, server.getTags());
+                    if (listIter.hasNext()) {
                         json.append(",");
                     }
-                }
-                json.append("]");
-                json.append("}");
-                if (listIter.hasNext()) {
-                    json.append(",");
                 }
             }
             json.append("]");
@@ -190,5 +173,21 @@ public class TopologySSEServlet extends HttpServlet {
         json.append("}\n\n");
 
         return json.toString();
+    }
+
+    protected void populateEndpointAndTagsJson(StringBuilder json, String endpoint, List<String> tags) {
+        json.append("{");
+        json.append("\"endpoint\": \"").append(endpoint).append("\",");
+        json.append("\"tags\":[");
+        Iterator<String> tagIter = tags.iterator();
+        while (tagIter.hasNext()) {
+            String tag = tagIter.next();
+            json.append("\"").append(tag).append("\"");
+            if (tagIter.hasNext()) {
+                json.append(",");
+            }
+        }
+        json.append("]");
+        json.append("}");
     }
 }

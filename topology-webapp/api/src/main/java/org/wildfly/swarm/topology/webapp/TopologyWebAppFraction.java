@@ -15,25 +15,95 @@
  */
 package org.wildfly.swarm.topology.webapp;
 
+import org.wildfly.swarm.config.undertow.HandlerConfiguration;
+import org.wildfly.swarm.config.undertow.Server;
+import org.wildfly.swarm.config.undertow.configuration.ReverseProxy;
+import org.wildfly.swarm.config.undertow.server.Host;
+import org.wildfly.swarm.config.undertow.server.host.Location;
+import org.wildfly.swarm.container.Container;
 import org.wildfly.swarm.container.Fraction;
-import org.wildfly.swarm.topology.IdentityExternalAddressMapper;
+import org.wildfly.swarm.undertow.UndertowFraction;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author Lance Ball
  */
 public class TopologyWebAppFraction implements Fraction {
 
-    private Class externalAddressMapper = IdentityExternalAddressMapper.class;
+    private Map<String, String> proxiedServiceMappings = new HashMap<>();
+    private boolean exposeTopologyEndpoint = true;
 
-    public TopologyWebAppFraction() {
+    /**
+     * Set up a load-balancing reverse proxy for the given service at the
+     * given context path. Requests to this proxy will be load-balanced
+     * among all instances of the service, as provided by our Topology.
+     *
+     * @param serviceName the name of the service to proxy
+     * @param contextPath the context path expose the proxy under
+     */
+    public void proxyService(String serviceName, String contextPath) {
+        if (proxiedServiceMappings().containsValue(contextPath)) {
+            throw new IllegalArgumentException("Cannot proxy multiple services under the same context path");
+        }
+        proxiedServiceMappings.put(serviceName, contextPath);
     }
 
-    public Class externalAddressMapper() {
-        return externalAddressMapper;
+    /**
+     * Get a map, keyed by service name, of the proxied service names
+     * and their context paths.
+     *
+     * @return the map of proxied services and their context paths
+     */
+    public Map<String, String> proxiedServiceMappings() {
+        return proxiedServiceMappings;
     }
 
-    public void externalAddressMapper(Class externalAddressMapper) {
-        this.externalAddressMapper = externalAddressMapper;
+    /**
+     * Set to true to expose a Topology SSE endpoint and topology.js for
+     * consuming topology information from the browser. Set to false to
+     * disable this endpoint.
+     *
+     * Defaults to true.
+     *
+     * @param exposeTopologyEndpoint whether to expose the endpoint or not
+     */
+    public void exposeTopologyEndpoint(boolean exposeTopologyEndpoint) {
+        this.exposeTopologyEndpoint = exposeTopologyEndpoint;
+    }
+
+    public boolean exposeTopologyEndpoint() {
+        return exposeTopologyEndpoint;
+    }
+
+    /**
+     * @param serviceName
+     * @return the name of the Undertow proxy handler for this service
+     */
+    public static String proxyHandlerName(String serviceName) {
+        return serviceName + "-proxy-handler";
+    }
+
+    @Override
+    public void postInitialize(Container.PostInitContext initContext) {
+        if (!proxiedServiceMappings.isEmpty()) {
+            UndertowFraction undertow = (UndertowFraction) initContext.fraction("undertow");
+            HandlerConfiguration handlerConfig = undertow.subresources().handlerConfiguration();
+            for (String serviceName : proxiedServiceMappings.keySet()) {
+                ReverseProxy proxy = new ReverseProxy(proxyHandlerName(serviceName)).hosts(Collections.emptyList());
+                handlerConfig.reverseProxy(proxy);
+
+                String contextPath = proxiedServiceMappings.get(serviceName);
+                for (Server server : undertow.subresources().servers()) {
+                    Location location = new Location(contextPath).handler(proxyHandlerName(serviceName));
+                    for (Host host : server.subresources().hosts()) {
+                        host.location(location);
+                    }
+                }
+            }
+        }
     }
 
 }
