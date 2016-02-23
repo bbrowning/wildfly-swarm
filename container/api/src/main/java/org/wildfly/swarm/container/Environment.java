@@ -24,4 +24,19 @@ public class Environment {
                 System.getenv("OPENSHIFT_BUILD_REFERENCE") != null ||
                 "openshift".equalsIgnoreCase(System.getProperty(SwarmProperties.ENVIRONMENT));
     }
+
+    public static String serviceHost(String serviceName) {
+        String envName = serviceName.replace("-", "_").toUpperCase() + "_SERVICE_HOST";
+        return System.getenv(envName);
+    }
+
+    public static int servicePort(String serviceName) {
+        String envName = serviceName.replace("-", "_").toUpperCase() + "_SERVICE_PORT";
+        String envPort = System.getenv(envName);
+        if (envPort == null) {
+            return -1;
+        }
+
+        return Integer.parseInt(envPort);
+    }
 }

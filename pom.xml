@@ -74,6 +74,8 @@
 
     <version.fest-assert>1.4</version.fest-assert>
 
+    <version.openshift.client>3.0.1.Final</version.openshift.client>
+
     <version.jruby-maven-plugin>1.1.3</version.jruby-maven-plugin>
     <version.maven-plugin-plugin>3.4</version.maven-plugin-plugin>
     <version.maven-archetype-plugin>2.2</version.maven-archetype-plugin>
@@ -947,6 +949,27 @@
 
       <dependency>
         <groupId>org.wildfly.swarm</groupId>
+        <artifactId>topology-openshift</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wildfly.swarm</groupId>
+        <artifactId>topology-openshift-modules</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wildfly.swarm</groupId>
+        <artifactId>topology-openshift-runtime</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.openshift</groupId>
+        <artifactId>openshift-restclient-java</artifactId>
+        <version>${version.openshift.client}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.wildfly.swarm</groupId>
         <artifactId>transactions-modules</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -1241,6 +1264,7 @@
     <module>topology</module>
     <module>topology-consul</module>
     <module>topology-jgroups</module>
+    <module>topology-openshift</module>
     <module>topology-webapp</module>
 
     <module>servers</module>
